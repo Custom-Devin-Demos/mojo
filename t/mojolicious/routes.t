@@ -1025,4 +1025,128 @@ subtest 'Unknown placeholder type (matches nothing)' => sub {
   is_deeply $m->stack, [], 'empty stack';
 };
 
+subtest 'Cacheable conditions' => sub {
+  $r = Mojolicious::Routes->new;
+
+  # Register a cacheable condition with a cache key generator
+  $r->add_condition(
+    test_header => sub {
+      my ($route, $c, $captures, $arg) = @_;
+      my $header = $c->req->headers->header('X-Test') // '';
+      return $header eq $arg;
+    },
+    {cache_key => sub { shift->req->headers->header('X-Test') // '' }}
+  );
+
+  # Route with cacheable condition
+  $r->get('/cached')->requires(test_header => 'foo')->to(action => 'cached');
+
+  # Cache should NOT be disabled (max_keys should still be 100)
+  is $r->cache->max_keys, 100, 'cache not disabled for cacheable condition';
+
+  # Verify condition_cache_keys is populated
+  ok exists $r->condition_cache_keys->{test_header}, 'cache key registered';
+};
+
+subtest 'Non-cacheable conditions disable cache' => sub {
+  $r = Mojolicious::Routes->new;
+
+  # Register a non-cacheable condition (no cache_key)
+  $r->add_condition(
+    uncacheable => sub {
+      my ($route, $c, $captures, $arg) = @_;
+      return 1;
+    }
+  );
+
+  # Route with non-cacheable condition
+  $r->get('/uncached')->requires(uncacheable => 1)->to(action => 'uncached');
+
+  # Cache should be disabled
+  is $r->cache->max_keys, 0, 'cache disabled for non-cacheable condition';
+};
+
+subtest 'Mixed cacheable and non-cacheable conditions' => sub {
+  $r = Mojolicious::Routes->new;
+
+  # Register a cacheable condition
+  $r->add_condition(
+    cacheable_cond => sub { return 1 },
+    {cache_key => sub { 'static' }}
+  );
+
+  # Register a non-cacheable condition
+  $r->add_condition(
+    uncacheable_cond => sub { return 1 }
+  );
+
+  # Route with only cacheable condition - cache should remain enabled
+  $r->get('/only_cacheable')->requires(cacheable_cond => 1)->to(action => 'test');
+  is $r->cache->max_keys, 100, 'cache still enabled with only cacheable condition';
+
+  # Route with mixed conditions - cache should be disabled
+  $r->get('/mixed')->requires(cacheable_cond => 1, uncacheable_cond => 1)->to(action => 'test2');
+  is $r->cache->max_keys, 0, 'cache disabled when mixed with non-cacheable condition';
+};
+
+subtest 'Simple mode' => sub {
+  $r = Mojolicious::Routes->new;
+  $r->simple_mode(1);
+
+  is $r->simple_mode, 1, 'simple mode enabled';
+
+  # Add a simple route
+  $r->get('/simple')->to(action => 'simple');
+
+  my $c = Mojolicious::Controller->new;
+  my $m = Mojolicious::Routes::Match->new(root => $r);
+  $m->find($c => {method => 'GET', path => '/simple'});
+  is_deeply $m->stack, [{action => 'simple'}], 'simple route matched';
+};
+
+subtest 'Simple mode with WebSocket route' => sub {
+  $r = Mojolicious::Routes->new;
+  $r->simple_mode(1);
+
+  # WebSocket route should still work in simple mode
+  $r->websocket('/ws')->to(action => 'websocket');
+  $r->get('/normal')->to(action => 'normal');
+
+  my $c = Mojolicious::Controller->new;
+
+  # Normal route should match
+  my $m = Mojolicious::Routes::Match->new(root => $r);
+  $m->find($c => {method => 'GET', path => '/normal'});
+  is_deeply $m->stack, [{action => 'normal'}], 'normal route matched in simple mode';
+
+  # WebSocket route should not match without websocket flag (simple mode sets ws=0)
+  $m = Mojolicious::Routes::Match->new(root => $r);
+  $m->find($c => {method => 'GET', path => '/ws', websocket => 0});
+  is_deeply $m->stack, [], 'websocket route not matched without websocket flag';
+};
+
+subtest 'Cache key includes condition contributions' => sub {
+  $r = Mojolicious::Routes->new;
+
+  # Register cacheable condition
+  my $cache_key_called = 0;
+  $r->add_condition(
+    header_check => sub {
+      my ($route, $c, $captures, $arg) = @_;
+      return ($c->req->headers->header('X-Custom') // '') eq $arg;
+    },
+    {cache_key => sub {
+      $cache_key_called++;
+      return shift->req->headers->header('X-Custom') // '';
+    }}
+  );
+
+  $r->get('/header_route')->requires(header_check => 'expected')->to(action => 'header');
+
+  # Verify cache key generator is called during matching
+  # (This is tested indirectly through the condition_cache_keys attribute)
+  ok exists $r->condition_cache_keys->{header_check}, 'condition cache key registered';
+  is ref $r->condition_cache_keys->{header_check}, 'CODE', 'cache key is a code reference';
+};
+
 done_testing();

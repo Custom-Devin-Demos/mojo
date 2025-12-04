@@ -3,7 +3,7 @@ use Mojo::Base -base;
 
 use Mojo::Util;
 
-has [qw(endpoint root)];
+has [qw(endpoint root uncacheable)];
 has position => 0;
 has stack    => sub { [] };
 
@@ -36,7 +36,11 @@ sub _match {
   # Pattern
   my $path    = $options->{path};
   my $partial = $r->partial;
-  my $detect  = (my $endpoint = $r->is_endpoint) && !$partial;
+
+  # Simple mode skips format detection for non-endpoint routes
+  my $detect = (my $endpoint = $r->is_endpoint) && !$partial;
+  $detect = 0 if $options->{simple_mode} && !$endpoint;
+
   return undef unless my $captures = $r->pattern->match_partial(\$path, $detect);
   local $options->{path} = $path;
   local @{$self->{captures} //= {}}{keys %$captures} = values %$captures;
@@ -48,15 +52,20 @@ sub _match {
 
   # Conditions
   if (my $over = $r->requires) {
-    my $conditions = $self->{conditions} ||= $self->root->conditions;
+    my $conditions      = $self->{conditions} ||= $self->root->conditions;
+    my $cacheable_keys  = $self->root->condition_cache_keys;
     for (my $i = 0; $i < @$over; $i += 2) {
-      return undef unless my $condition = $conditions->{$over->[$i]};
+      my $name = $over->[$i];
+      return undef unless my $condition = $conditions->{$name};
       return undef if !$condition->($r, $c, $captures, $over->[$i + 1]);
+
+      # Mark as uncacheable if this condition doesn't have a cache key
+      $self->uncacheable(1) unless exists $cacheable_keys->{$name};
     }
   }
 
-  # WebSocket
-  return undef if $r->is_websocket && !$options->{websocket};
+  # WebSocket (skip in simple mode since we already set ws=0)
+  return undef if !$options->{simple_mode} && $r->is_websocket && !$options->{websocket};
 
   # Partial
   my $empty = !length $path || $path eq '/';

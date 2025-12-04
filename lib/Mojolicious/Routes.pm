@@ -11,10 +11,20 @@ use Mojo::Util   qw(camelize);
 has base_classes               => sub { [qw(Mojolicious::Controller Mojolicious)] };
 has cache                      => sub { Mojo::Cache->new };
 has [qw(conditions shortcuts)] => sub { {} };
+has condition_cache_keys       => sub { {} };
 has types                      => sub { {num => qr/[0-9]+/} };
 has namespaces                 => sub { [] };
+has simple_mode                => 0;
 
-sub add_condition { $_[0]->conditions->{$_[1]} = $_[2] and return $_[0] }
+sub add_condition {
+  my ($self, $name, $cb, $options) = @_;
+  $options //= {};
+  $self->conditions->{$name} = $cb;
+  if ($options->{cache_key}) {
+    $self->condition_cache_keys->{$name} = $options->{cache_key};
+  }
+  return $self;
+}
 
 sub add_shortcut {
   my ($self, $name, $cb) = @_;
@@ -70,19 +80,41 @@ sub match {
   $method = uc $override if $override && $method eq 'POST';
   $method = 'GET'        if $method eq 'HEAD';
 
-  # Check cache
-  my $ws    = $c->tx->is_websocket ? 1 : 0;
+  # Simple mode skips WebSocket check for non-WebSocket requests
+  my $ws    = $self->simple_mode ? 0 : ($c->tx->is_websocket ? 1 : 0);
   my $match = $c->match;
   $match->root($self);
-  my $cache = $self->cache;
-  if (my $result = $cache->get("$method:$path:$ws")) {
+
+  # Build cache key with condition cache key contributions
+  my $cache     = $self->cache;
+  my $cache_key = "$method:$path:$ws";
+
+  # Add condition cache key contributions if available
+  my $condition_keys = $self->condition_cache_keys;
+  if (%$condition_keys) {
+    my @key_parts;
+    for my $name (sort keys %$condition_keys) {
+      my $key_cb = $condition_keys->{$name};
+      if (my $key_part = $key_cb->($c)) {
+        push @key_parts, "$name=$key_part";
+      }
+    }
+    $cache_key .= ':' . join(',', @key_parts) if @key_parts;
+  }
+
+  # Check cache
+  if (my $result = $cache->get($cache_key)) {
     return $match->endpoint($result->{endpoint})->stack($result->{stack});
   }
 
-  # Check routes
-  $match->find($c => {method => $method, path => $path, websocket => $ws});
+  # Check routes (simple mode uses optimized options)
+  my $options = {method => $method, path => $path, websocket => $ws};
+  $options->{simple_mode} = 1 if $self->simple_mode;
+  $match->find($c => $options);
   return undef unless my $route = $match->endpoint;
-  $cache->set("$method:$path:$ws" => {endpoint => $route, stack => $match->stack});
+
+  # Only cache if the route allows it
+  $cache->set($cache_key => {endpoint => $route, stack => $match->stack}) unless $match->uncacheable;
 }
 
 sub _action { shift->plugins->emit_chain(around_action => @_) }
@@ -245,6 +277,15 @@ Base classes used to identify controllers, defaults to L<Mojolicious::Controller
 
 Routing cache, defaults to a L<Mojo::Cache> object.
 
+=head2 condition_cache_keys
+
+  my $keys = $r->condition_cache_keys;
+  $r       = $r->condition_cache_keys({agent => sub {...}});
+
+Contains cache key generators for cacheable conditions. When a condition has a cache key generator registered here,
+routes using that condition can still be cached. The cache key generator receives the controller and should return
+a string that uniquely identifies the condition's state for caching purposes.
+
 =head2 conditions
 
   my $conditions = $r->conditions;
@@ -269,6 +310,15 @@ Namespaces to load controllers from.
 
 Contains all available shortcuts.
 
+=head2 simple_mode
+
+  my $bool = $r->simple_mode;
+  $r       = $r->simple_mode(1);
+
+Enable simple mode for optimized routing performance. When enabled, the router skips WebSocket checks for non-WebSocket
+requests and reduces format detection overhead. This is useful for applications that don't use WebSocket routes or
+advanced format detection features. Defaults to C<0> (disabled).
+
 =head2 types
 
   my $types = $r->types;
@@ -283,13 +333,22 @@ L<Mojolicious::Routes> inherits all methods from L<Mojolicious::Routes::Route> a
 =head2 add_condition
 
   $r = $r->add_condition(foo => sub ($route, $c, $captures, $arg) {...});
+  $r = $r->add_condition(foo => sub ($route, $c, $captures, $arg) {...}, {cache_key => sub {...}});
 
-Register a condition.
+Register a condition. Optionally, a C<cache_key> callback can be provided to make the condition cacheable. The cache
+key callback receives the controller and should return a string that uniquely identifies the condition's state for
+caching purposes. Routes with cacheable conditions can still benefit from the routing cache.
 
+  # Non-cacheable condition (disables cache for routes using it)
   $r->add_condition(foo => sub ($route, $c, $captures, $arg) {
     ...
     return 1;
   });
+
+  # Cacheable condition with cache key based on User-Agent header
+  $r->add_condition(agent => sub ($route, $c, $captures, $arg) {
+    return $c->req->headers->user_agent =~ $arg;
+  }, {cache_key => sub ($c) { $c->req->headers->user_agent // '' }});
 
 =head2 add_shortcut
 
