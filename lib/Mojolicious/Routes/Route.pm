@@ -104,12 +104,26 @@ sub root { shift->_chain->[0] }
 sub requires {
   my $self = shift;
 
-  # Routes with conditions can't be cached
+  # Routes with conditions can't be cached (unless all conditions are cacheable)
   return $self->{requires} unless @_;
   my $conditions = ref $_[0] eq 'ARRAY' ? $_[0] : [@_];
   return $self unless @$conditions;
   $self->{requires} = $conditions;
-  $self->root->cache->max_keys(0);
+
+  # Check if all conditions are cacheable
+  my $root           = $self->root;
+  my $cacheable_keys = $root->condition_cache_keys;
+  my $all_cacheable  = 1;
+  for (my $i = 0; $i < @$conditions; $i += 2) {
+    my $name = $conditions->[$i];
+    unless (exists $cacheable_keys->{$name}) {
+      $all_cacheable = 0;
+      last;
+    }
+  }
+
+  # Only disable cache if there are non-cacheable conditions
+  $root->cache->max_keys(0) unless $all_cacheable;
 
   return $self;
 }
