@@ -14,7 +14,7 @@
     %= javascript '/mojo/bootstrap/bootstrap.js'
     %= stylesheet '/mojo/bootstrap/bootstrap.css'
     %= stylesheet '/mojo/highlight.js/highlight-mojo-dark.css'
-    %= stylesheet '/mojo/mojo.scss'
+    %= stylesheet '/mojo/mojo.css'
     <script>
       'use strict';
       hljs.initHighlightingOnLoad();
