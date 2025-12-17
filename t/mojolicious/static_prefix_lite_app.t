@@ -43,7 +43,7 @@ subtest 'Bundled template' => sub {
   $t->get_ok('/doesnotexist')
     ->status_is(404)
     ->element_exists('link[href=/static/favicon.ico]')
-    ->element_exists('link[href=/static/mojo/mojo.css]');
+    ->element_exists('link[href=/static/mojo/mojo.scss]');
 };
 
 subtest 'Helpers with prefix' => sub {

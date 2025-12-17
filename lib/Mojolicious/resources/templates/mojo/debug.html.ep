@@ -14,7 +14,7 @@
     %= javascript '/mojo/bootstrap/bootstrap.js'
     %= stylesheet '/mojo/bootstrap/bootstrap.css'
     %= stylesheet '/mojo/highlight.js/highlight-mojo-dark.css'
-    %= stylesheet '/mojo/mojo.css'
+    %= stylesheet '/mojo/mojo.scss'
     <script>
       'use strict';
       hljs.initHighlightingOnLoad();
@@ -24,20 +24,6 @@
         }
       });
     </script>
-    <style>
-      .fa-copyright {
-        line-height: 12px;
-        height: 12px;
-        width: 12px;
-        display: inline-block;
-      }
-
-      .fa-icon {
-        width: 32px;
-        display: inline-block;
-        line-height: 24px;
-      }
-    </style>
   </head>
   <body class="d-flex flex-column h-100">
     <header>

@@ -1,0 +1,323 @@
+// Variables
+$font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
+  "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+$font-family-mono: SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+$font-size-code: 14px;
+
+$color-white: #fff;
+$color-black: #000;
+$color-text: #333;
+$color-text-light: #666;
+$color-text-muted: #777;
+$color-text-nav: #bbb;
+$color-text-code: #eee;
+
+$color-bg-code: #282c34;
+$color-bg-code-inline: #eef9ff;
+$color-bg-mojobar: #1a1a1a;
+$color-bg-search: #3a3a3a;
+$color-bg-footer: #f2ece9;
+
+$color-border: #e1e4e8;
+$color-border-code: #cce4ff;
+
+$color-striped-odd: #ddeeff;
+$color-striped-even: #eef9ff;
+
+$border-radius: .25rem;
+
+// Base styles
+html {
+  height: 100%;
+}
+
+body {
+  font-family: $font-family-base;
+}
+
+main {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+// Navbar
+.navbar {
+  --bs-navbar-padding-x: 1rem;
+  --bs-navbar-padding-y: .5rem;
+}
+
+// Code styles
+:not(pre) > code {
+  background-color: $color-bg-code-inline;
+  border: solid $color-border-code 1px;
+  border-radius: $border-radius;
+  color: $color-text;
+  font: $font-size-code $font-family-mono;
+  padding: 0.4em;
+}
+
+// Headings
+h2 {
+  font-weight: 300;
+  font-size: 2em;
+}
+
+// Pre and code blocks
+pre {
+  font: $font-size-code $font-family-mono;
+  margin: 0;
+  white-space: pre-wrap;
+
+  > code {
+    display: block;
+    font: $font-size-code $font-family-mono;
+    margin-bottom: 0.7em;
+    margin-top: 0.7em;
+  }
+}
+
+// Tables
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td {
+  padding: 0.5em;
+}
+
+th {
+  padding-left: 1em;
+}
+
+// Border radius utilities
+.border-radius-bottom {
+  border-radius: 0 0 $border-radius $border-radius;
+}
+
+.border-radius-both {
+  border-radius: $border-radius;
+}
+
+.border-radius-top {
+  border-radius: $border-radius $border-radius 0 0;
+}
+
+// Box component
+.box {
+  background-color: $color-white;
+  border: 1px solid $color-border;
+  overflow: hidden;
+  padding: 1em;
+  width: 100%;
+}
+
+// Code block with dark background
+.code {
+  background-color: $color-bg-code;
+  background: url(../mojo/pinstripe-dark.png);
+  color: $color-text-code;
+  text-shadow: $color-text 0 1px 0;
+}
+
+// Context value
+.context-value {
+  padding: 0;
+  padding-left: 1em;
+}
+
+// Error message
+.error {
+  color: $color-white;
+  font: 1.5em 'Helvetica Neue', Helvetica, sans-serif;
+  font-weight: 300;
+  margin: 0;
+}
+
+// Fixed table layout
+.fixed-table {
+  table-layout: fixed;
+}
+
+// Important highlight
+.important {
+  background-color: rgba(47, 48, 50, .75);
+}
+
+// Key column
+.key {
+  width: 20%;
+}
+
+// Mojobar navigation
+.mojobar {
+  background-color: $color-bg-mojobar;
+
+  #navbarNav {
+    .nav-link {
+      color: $color-text-nav;
+
+      &:hover {
+        color: $color-white;
+      }
+    }
+
+    input[type=search] {
+      background-color: $color-bg-search;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 3px;
+      color: $color-text-code;
+      padding: 6px;
+      margin-left: 1em;
+      transition: all 0.15s;
+
+      &:focus {
+        background-color: $color-white;
+        color: #111;
+        outline: 0;
+      }
+    }
+  }
+}
+
+// Mojo divider
+.mojo-divider {
+  padding-bottom: 1em;
+}
+
+// Mojo copy
+.mojo-copy {
+  font-size: 12px;
+
+  &, a {
+    color: $color-text-muted;
+  }
+}
+
+// Mojo footer
+.mojo-footer {
+  background: url(../mojo/pinstripe-light.png);
+  background-color: $color-bg-footer;
+  box-shadow: inset 0 10px 10px -5px #ddd;
+  color: $color-text-light;
+
+  a:hover {
+    color: $color-black;
+    text-decoration: none;
+  }
+}
+
+// Mojo social links
+.mojo-social a {
+  color: $color-text-light;
+  font-size: 1.5em;
+  padding: 0.2em;
+}
+
+// Mojo terminal
+.mojo-terminal {
+  background-color: $color-bg-code;
+  border: 0;
+  border-radius: $border-radius;
+  font: $font-size-code $font-family-mono;
+  padding: 1em;
+  width: 100%;
+
+  > code {
+    color: $color-text-code;
+    font: $font-size-code $font-family-mono;
+    line-height: 1.5em;
+    text-align: left;
+    white-space: pre-wrap;
+  }
+}
+
+// Border utilities
+.no-bottom-border {
+  border-bottom: 0;
+}
+
+.no-padding {
+  padding: 0;
+}
+
+.no-top-border {
+  border-top: 0;
+}
+
+.padded-content {
+  padding: 1em;
+}
+
+// Striped table styles
+.striped {
+  tr:nth-child(odd) .value {
+    background-color: $color-striped-odd;
+  }
+
+  tr:nth-child(even) .value {
+    background-color: $color-striped-even;
+  }
+
+  .key {
+    border-right: 1px solid $color-border;
+  }
+
+  tr:not(:first-of-type) .value {
+    border-top: solid $color-border-code 1px;
+  }
+}
+
+.striped-grey .value {
+  border-top: solid $color-border 1px;
+}
+
+// Tap indicator
+.tap {
+  font: 0.5em Verdana, sans-serif;
+  padding: 20px;
+  text-align: center;
+}
+
+.tap-border-top, #infos {
+  border-top: 1px solid $color-border;
+}
+
+// Tooltip code
+.tooltip code {
+  background: 0;
+  border: 0;
+  border-radius: 0;
+  color: $color-text-code;
+  font: $font-size-code $font-family-mono;
+  padding: 0;
+}
+
+// Value cell
+.value {
+  padding: 1em;
+
+  pre {
+    padding-right: 1em;
+  }
+}
+
+// Wide utility
+.wide {
+  width: 100%;
+}
+
+// Font Awesome icon styles (extracted from inline CSS)
+.fa-copyright {
+  line-height: 12px;
+  height: 12px;
+  width: 12px;
+  display: inline-block;
+}
+
+.fa-icon {
+  width: 32px;
+  display: inline-block;
+  line-height: 24px;
+}
