@@ -59,6 +59,8 @@ sub is_finished { (shift->{state} // '') eq 'finished' }
 
 sub is_limit_exceeded { !!shift->{limit} }
 
+sub limit_exceeded_type { shift->{limit_type} }
+
 sub is_multipart {undef}
 
 sub is_parsing_body { (shift->{state} // '') eq 'body' }
@@ -201,7 +203,7 @@ sub _decompress {
   $self->headers->content_length($gz->total_out)->remove('Content-Encoding') if $status == Z_STREAM_END;
 
   # Check buffer size
-  @$self{qw(state limit)} = ('finished', 1) if length($self->{post_buffer} // '') > $self->max_buffer_size;
+  @$self{qw(state limit limit_type)} = ('finished', 1, 'decompress_buffer') if length($self->{post_buffer} // '') > $self->max_buffer_size;
 }
 
 sub _headers {
@@ -241,7 +243,7 @@ sub _parse_chunked {
   $self->_parse_chunked_trailing_headers if ($self->{chunk_state} // '') eq 'trailing_headers';
 
   # Check buffer size
-  @$self{qw(state limit)} = ('finished', 1) if length($self->{pre_buffer} // '') > $self->max_buffer_size;
+  @$self{qw(state limit limit_type)} = ('finished', 1, 'chunked_buffer') if length($self->{pre_buffer} // '') > $self->max_buffer_size;
 }
 
 sub _parse_chunked_trailing_headers {
@@ -280,7 +282,7 @@ sub _parse_sse {
   while (my $event = parse_event(\$self->{pre_buffer})) { $self->emit(sse => $event) }
 
   # Check buffer size
-  @$self{qw(state limit)} = ('finished', 1) if length($self->{pre_buffer} // '') > $self->max_buffer_size;
+  @$self{qw(state limit limit_type)} = ('finished', 1, 'sse_buffer') if length($self->{pre_buffer} // '') > $self->max_buffer_size;
 }
 
 sub _parse_until_body {
@@ -509,6 +511,19 @@ Check if parser is finished.
   my $bool = $content->is_limit_exceeded;
 
 Check if buffer has exceeded L</"max_buffer_size">.
+
+=head2 limit_exceeded_type
+
+  my $type = $content->limit_exceeded_type;
+
+Get the type of buffer limit that was exceeded if L</"is_limit_exceeded"> returns true. Possible values are
+C<decompress_buffer>, C<chunked_buffer>, or C<sse_buffer>. Returns C<undef> if no limit was exceeded.
+
+  # Check which buffer limit was exceeded
+  if ($content->is_limit_exceeded) {
+    my $type = $content->limit_exceeded_type;
+    say "Buffer limit exceeded: $type";
+  }
 
 =head2 is_multipart
 

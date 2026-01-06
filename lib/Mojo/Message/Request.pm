@@ -6,6 +6,15 @@ use Mojo::Cookie::Request;
 use Mojo::Util qw(b64_encode b64_decode sha1_sum);
 use Mojo::URL;
 
+# RFC 7230 compliant HTTP method token pattern (tchar = !#$%&'*+-.^_`|~ / DIGIT / ALPHA)
+my $METHOD_RE = qr/^[A-Za-z0-9!#\$%&'*+\-.^_`|~]+$/;
+
+# RFC 7230 compliant HTTP version pattern
+my $VERSION_RE = qr/^\d\.\d$/;
+
+# Standard HTTP methods for validation hints
+my %STANDARD_METHODS = map { $_ => 1 } qw(GET HEAD POST PUT DELETE CONNECT OPTIONS TRACE PATCH);
+
 has env    => sub { {} };
 has method => 'GET';
 has [qw(proxy reverse_proxy)];
@@ -16,9 +25,10 @@ has request_id => sub {
   $b64 =~ tr!+/!-_!;
   return $b64;
 };
-has trusted_proxies => sub { [] };
-has url             => sub { Mojo::URL->new };
-has via_proxy       => 1;
+has strict_transport_security => 0;
+has trusted_proxies           => sub { [] };
+has url                       => sub { Mojo::URL->new };
+has via_proxy                 => 1;
 
 sub clone {
   my $self = shift;
@@ -55,12 +65,32 @@ sub extract_start_line {
   return undef unless $$bufref =~ s/^\s*(.*?)\x0d?\x0a//;
 
   # We have a (hopefully) full request-line
-  return !$self->error({message => 'Bad request start-line'}) unless $1 =~ /^(\S+)\s+(\S+)\s+HTTP\/(\d\.\d)$/;
-  my $url    = $self->method($1)->version($3)->url;
-  my $target = $2;
-  return !!$url->host_port($target)              if $1 eq 'CONNECT';
+  my $line = $1;
+  return !$self->error({message => 'Bad request start-line'}) unless $line =~ /^(\S+)\s+(\S+)\s+HTTP\/(\d\.\d)$/;
+
+  my ($method, $target, $version) = ($1, $2, $3);
+
+  # Validate HTTP method (RFC 7230 compliant token)
+  return !$self->error({message => 'Bad request method', advice => 'method_invalid'})
+    unless $method =~ $METHOD_RE;
+
+  # Validate HTTP version
+  return !$self->error({message => 'Bad HTTP version', advice => 'version_invalid'})
+    unless $version =~ $VERSION_RE;
+
+  # Validate request target is not empty and doesn't contain invalid characters
+  return !$self->error({message => 'Bad request target', advice => 'target_invalid'})
+    if $target =~ /[\x00-\x1f\x7f]/;
+
+  my $url = $self->method($method)->version($version)->url;
+  return !!$url->host_port($target)              if $method eq 'CONNECT';
   return !!$url->parse($target)->fragment(undef) if $target =~ /^[^:\/?#]+:/;
   return !!$url->path_query($target);
+}
+
+sub is_standard_method {
+  my $self = shift;
+  return !!$STANDARD_METHODS{uc $self->method};
 }
 
 sub fix_headers {
@@ -400,6 +430,12 @@ Check C<Upgrade> header for C<websocket> value.
   my $bool = $req->is_secure;
 
 Check if connection is secure.
+
+=head2 is_standard_method
+
+  my $bool = $req->is_standard_method;
+
+Check if the HTTP method is a standard method (GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH).
 
 =head2 is_xhr
 
