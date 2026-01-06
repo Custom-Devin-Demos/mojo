@@ -129,6 +129,8 @@ sub is_finished { (shift->{state} // '') eq 'finished' }
 
 sub is_limit_exceeded { !!shift->{limit} }
 
+sub limit_exceeded_type { shift->{limit_type} }
+
 sub json {
   my ($self, $pointer) = @_;
   return undef if $self->content->is_multipart;
@@ -149,7 +151,7 @@ sub parse {
     # Check start-line size
     my $len = index $self->{buffer}, "\x0a";
     $len = length $self->{buffer} if $len < 0;
-    return $self->_limit('Maximum start-line size exceeded') if $len > $self->max_line_size;
+    return $self->_limit('Maximum start-line size exceeded', 'start_line') if $len > $self->max_line_size;
 
     $self->{state} = 'content' if $self->extract_start_line(\$self->{buffer});
   }
@@ -160,13 +162,13 @@ sub parse {
 
   # Check message size
   my $max = $self->max_message_size;
-  return $self->_limit('Maximum message size exceeded') if $max && $max < $self->{raw_size};
+  return $self->_limit('Maximum message size exceeded', 'message') if $max && $max < $self->{raw_size};
 
   # Check header size
-  return $self->_limit('Maximum header size exceeded') if $self->headers->is_limit_exceeded;
+  return $self->_limit('Maximum header size exceeded', 'header') if $self->headers->is_limit_exceeded;
 
   # Check buffer size
-  return $self->_limit('Maximum buffer size exceeded') if $self->content->is_limit_exceeded;
+  return $self->_limit('Maximum buffer size exceeded', 'buffer') if $self->content->is_limit_exceeded;
 
   return $self->emit('progress')->content->is_finished ? $self->finish : $self;
 }
@@ -244,7 +246,12 @@ sub _cache {
   return $all ? $objects : $objects->[-1];
 }
 
-sub _limit { ++$_[0]{limit} and return $_[0]->error({message => $_[1]}) }
+sub _limit {
+  my ($self, $message, $type) = @_;
+  $self->{limit}      = 1;
+  $self->{limit_type} = $type;
+  return $self->error({message => $message, limit_type => $type});
+}
 
 sub _parse_formdata {
   my ($self, $upload) = @_;
@@ -555,6 +562,19 @@ Check if message parser/generator is finished.
 
 Check if message has exceeded L</"max_line_size">, L</"max_message_size">, L<Mojo::Content/"max_buffer_size"> or
 L<Mojo::Headers/"max_line_size">.
+
+=head2 limit_exceeded_type
+
+  my $type = $msg->limit_exceeded_type;
+
+Get the type of limit that was exceeded if L</"is_limit_exceeded"> returns true. Possible values are C<start_line>,
+C<message>, C<header>, or C<buffer>. Returns C<undef> if no limit was exceeded.
+
+  # Check which limit was exceeded
+  if ($msg->is_limit_exceeded) {
+    my $type = $msg->limit_exceeded_type;
+    say "Limit exceeded: $type";
+  }
 
 =head2 json
 
