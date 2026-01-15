@@ -147,7 +147,16 @@ sub redirect {
   my $content = $new->res->content;
   $content->auto_decompress(0) unless $self->compressed;
   my $headers = $new->req->url($location)->headers;
-  $headers->remove($_) for qw(Authorization Cookie Host Referer);
+
+  # Always remove Host (will be regenerated) and Referer (security best practice)
+  $headers->remove($_) for qw(Host Referer);
+
+  # Only remove credentials (Authorization, Cookie) for cross-origin redirects
+  my $old_url = $req->url;
+  unless (_same_origin($old_url, $location)) {
+    $headers->remove($_) for qw(Authorization Cookie);
+  }
+
   if ($res->content->has_subscribers('sse')) { $content->on(sse => $_) for @{$res->content->subscribers('sse')} }
 
   return $new->previous($old);
@@ -324,6 +333,24 @@ sub _proxy {
   }
 
   return $proto, $host, $port;
+}
+
+sub _same_origin {
+  my ($url1, $url2) = @_;
+
+  my $proto1 = $url1->protocol || 'http';
+  my $proto2 = $url2->protocol || 'http';
+  return 0 if lc($proto1) ne lc($proto2);
+
+  my $host1 = $url1->ihost // '';
+  my $host2 = $url2->ihost // '';
+  return 0 if lc($host1) ne lc($host2);
+
+  my $port1 = $url1->port // ($proto1 eq 'https' ? 443 : 80);
+  my $port2 = $url2->port // ($proto2 eq 'https' ? 443 : 80);
+  return 0 if $port1 != $port2;
+
+  return 1;
 }
 
 sub _type { $_[0]->content_type($_[1]) unless $_[0]->content_type }
