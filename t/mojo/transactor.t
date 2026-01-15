@@ -1128,6 +1128,71 @@ subtest 'Promisify' => sub {
   is_deeply \@errors,  ['Premature connection close'], 'promise rejected';
 };
 
+subtest '302 redirect same-origin preserves credentials' => sub {
+  my $tx = $t->tx(GET => 'http://mojolicious.org/foo' =>
+      {Authorization => 'Bearer token123', Cookie => 'session=abc'});
+  $tx->res->code(302);
+  $tx->res->headers->location('http://mojolicious.org/bar');
+  is $tx->req->headers->authorization, 'Bearer token123', 'right "Authorization" value';
+  is $tx->req->headers->cookie,        'session=abc',     'right "Cookie" value';
+  $tx = $t->redirect($tx);
+  is $tx->req->method,                 'GET',                         'right method';
+  is $tx->req->url->to_abs,            'http://mojolicious.org/bar',  'right URL';
+  is $tx->req->headers->authorization, 'Bearer token123',             'same-origin preserves "Authorization"';
+  is $tx->req->headers->cookie,        'session=abc',                 'same-origin preserves "Cookie"';
+  is $tx->req->headers->host,          undef,                         'no "Host" value';
+  is $tx->req->headers->referrer,      undef,                         'no "Referer" value';
+};
+
+subtest '302 redirect cross-origin removes credentials' => sub {
+  my $tx = $t->tx(GET => 'http://mojolicious.org/foo' =>
+      {Authorization => 'Bearer token123', Cookie => 'session=abc'});
+  $tx->res->code(302);
+  $tx->res->headers->location('http://example.com/bar');
+  is $tx->req->headers->authorization, 'Bearer token123', 'right "Authorization" value';
+  is $tx->req->headers->cookie,        'session=abc',     'right "Cookie" value';
+  $tx = $t->redirect($tx);
+  is $tx->req->method,                 'GET',                     'right method';
+  is $tx->req->url->to_abs,            'http://example.com/bar',  'right URL';
+  is $tx->req->headers->authorization, undef,                     'cross-origin removes "Authorization"';
+  is $tx->req->headers->cookie,        undef,                     'cross-origin removes "Cookie"';
+};
+
+subtest '302 redirect scheme change removes credentials' => sub {
+  my $tx = $t->tx(GET => 'http://mojolicious.org/foo' =>
+      {Authorization => 'Bearer token123', Cookie => 'session=abc'});
+  $tx->res->code(302);
+  $tx->res->headers->location('https://mojolicious.org/bar');
+  $tx = $t->redirect($tx);
+  is $tx->req->url->to_abs,            'https://mojolicious.org/bar', 'right URL';
+  is $tx->req->headers->authorization, undef,                         'scheme change removes "Authorization"';
+  is $tx->req->headers->cookie,        undef,                         'scheme change removes "Cookie"';
+};
+
+subtest '302 redirect port change removes credentials' => sub {
+  my $tx = $t->tx(GET => 'http://mojolicious.org/foo' =>
+      {Authorization => 'Bearer token123', Cookie => 'session=abc'});
+  $tx->res->code(302);
+  $tx->res->headers->location('http://mojolicious.org:8080/bar');
+  $tx = $t->redirect($tx);
+  is $tx->req->url->to_abs,            'http://mojolicious.org:8080/bar', 'right URL';
+  is $tx->req->headers->authorization, undef,                             'port change removes "Authorization"';
+  is $tx->req->headers->cookie,        undef,                             'port change removes "Cookie"';
+};
+
+subtest '307 redirect same-origin preserves credentials with content' => sub {
+  my $tx = $t->tx(POST => 'http://mojolicious.org/foo' =>
+      {Authorization => 'Bearer token123', Cookie => 'session=abc'} => 'body content');
+  $tx->res->code(307);
+  $tx->res->headers->location('http://mojolicious.org/bar');
+  $tx = $t->redirect($tx);
+  is $tx->req->method,                 'POST',                        'right method';
+  is $tx->req->url->to_abs,            'http://mojolicious.org/bar',  'right URL';
+  is $tx->req->headers->authorization, 'Bearer token123',             'same-origin preserves "Authorization"';
+  is $tx->req->headers->cookie,        'session=abc',                 'same-origin preserves "Cookie"';
+  is $tx->req->body,                   'body content',                'right content';
+};
+
 subtest 'Abstract methods' => sub {
   eval { Mojo::Transaction->client_read };
   like $@, qr/Method "client_read" not implemented by subclass/, 'right error';
