@@ -3,14 +3,58 @@ use Mojo::Base 'Mojo::EventEmitter';
 
 use Carp                qw(croak);
 use Compress::Raw::Zlib qw(WANT_GZIP Z_STREAM_END);
+use List::Util          qw(min);
 use Mojo::Headers;
 use Mojo::SSE    qw(build_event parse_event);
 use Scalar::Util qw(looks_like_number);
 
+has adaptive_limits   => 0;
 has [qw(auto_decompress auto_relax relaxed skip_body)];
 has headers           => sub { Mojo::Headers->new };
 has max_buffer_size   => sub { $ENV{MOJO_MAX_BUFFER_SIZE}   || 262144 };
 has max_leftover_size => sub { $ENV{MOJO_MAX_LEFTOVER_SIZE} || 262144 };
+
+sub new {
+  my $class = shift;
+  my $self  = $class->SUPER::new(@_);
+
+  # Apply config-based limits if provided
+  if (my $config = $self->{config}) {
+    $self->max_buffer_size($config->{max_buffer_size})     if defined $config->{max_buffer_size};
+    $self->max_leftover_size($config->{max_leftover_size}) if defined $config->{max_leftover_size};
+  }
+
+  # Apply adaptive limits based on available system memory
+  if ($self->adaptive_limits) {
+    my $available = $self->_detect_available_memory;
+    if ($available) {
+      my $adaptive_buffer = int($available * 0.01);    # Use at most 1% of available memory for buffer
+      $self->max_buffer_size(min($self->max_buffer_size, $adaptive_buffer));
+      $self->max_leftover_size(min($self->max_leftover_size, $adaptive_buffer));
+    }
+  }
+
+  return $self;
+}
+
+sub _detect_available_memory {
+  my $self = shift;
+
+  # Try to detect available memory on Linux
+  if (-r '/proc/meminfo') {
+    if (open my $fh, '<', '/proc/meminfo') {
+      while (my $line = <$fh>) {
+        if ($line =~ /^MemAvailable:\s+(\d+)\s+kB/) {
+          close $fh;
+          return $1 * 1024;    # Convert to bytes
+        }
+      }
+      close $fh;
+    }
+  }
+
+  return undef;    # Memory detection not available
+}
 
 my $BOUNDARY_RE = qr!multipart.*boundary\s*=\s*(?:"([^"]+)"|([\w'(),.:?\-+/]+))!i;
 
@@ -364,6 +408,26 @@ that this event is B<EXPERIMENTAL> and may change without warning!
 =head1 ATTRIBUTES
 
 L<Mojo::Content> implements the following attributes.
+
+=head2 adaptive_limits
+
+  my $bool = $content->adaptive_limits;
+  $content = $content->adaptive_limits(1);
+
+Enable adaptive limits based on available system memory. When enabled, the C<max_buffer_size> and C<max_leftover_size>
+will be automatically adjusted to use at most 1% of available system memory (if it can be detected). This is useful for
+environments where memory availability varies. Defaults to C<0> (disabled).
+
+  # Create content with adaptive limits
+  my $content = Mojo::Content::Single->new(adaptive_limits => 1);
+
+  # Configure custom limits via config
+  my $content = Mojo::Content::Single->new(
+    config => {
+      max_buffer_size   => 524288,   # 512KB buffer limit
+      max_leftover_size => 524288,   # 512KB leftover limit
+    }
+  );
 
 =head2 auto_decompress
 

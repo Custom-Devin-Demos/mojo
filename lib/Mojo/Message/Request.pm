@@ -2,12 +2,61 @@ package Mojo::Message::Request;
 use Mojo::Base 'Mojo::Message';
 
 use Digest::SHA qw(sha1_base64);
+use List::Util qw(min);
 use Mojo::Cookie::Request;
 use Mojo::Util qw(b64_encode b64_decode sha1_sum);
 use Mojo::URL;
 
-has env    => sub { {} };
-has method => 'GET';
+has adaptive_limits => 0;
+has env             => sub { {} };
+has method          => 'GET';
+
+sub new {
+  my $class = shift;
+  my $self  = $class->SUPER::new(@_);
+
+  # Apply config-based limits if provided
+  if (my $config = $self->{config}) {
+    $self->max_line_size($config->{max_line_size})       if defined $config->{max_line_size};
+    $self->max_message_size($config->{max_message_size}) if defined $config->{max_message_size};
+
+    # Configure content limits
+    if (my $content = $self->content) {
+      $content->max_buffer_size($config->{max_buffer_size})     if defined $config->{max_buffer_size};
+      $content->max_leftover_size($config->{max_leftover_size}) if defined $config->{max_leftover_size};
+    }
+  }
+
+  # Apply adaptive limits based on available system memory
+  if ($self->adaptive_limits) {
+    my $available = $self->_detect_available_memory;
+    if ($available) {
+      my $adaptive_max = int($available * 0.1);    # Use at most 10% of available memory
+      $self->max_message_size(min($self->max_message_size, $adaptive_max));
+    }
+  }
+
+  return $self;
+}
+
+sub _detect_available_memory {
+  my $self = shift;
+
+  # Try to detect available memory on Linux
+  if (-r '/proc/meminfo') {
+    if (open my $fh, '<', '/proc/meminfo') {
+      while (my $line = <$fh>) {
+        if ($line =~ /^MemAvailable:\s+(\d+)\s+kB/) {
+          close $fh;
+          return $1 * 1024;    # Convert to bytes
+        }
+      }
+      close $fh;
+    }
+  }
+
+  return undef;    # Memory detection not available
+}
 has [qw(proxy reverse_proxy)];
 has request_id => sub {
   state $seed    = $$ . time . rand;
@@ -260,6 +309,18 @@ Mojo::Message::Request - HTTP request
   $req->method('GET');
   say $req->to_string;
 
+  # Configure custom size limits
+  my $req = Mojo::Message::Request->new(
+    config => {
+      max_line_size    => 16384,      # 16KB start-line limit
+      max_message_size => 33554432,   # 32MB message limit
+      max_buffer_size  => 524288,     # 512KB buffer limit
+    }
+  );
+
+  # Enable adaptive limits based on available memory
+  my $req = Mojo::Message::Request->new(adaptive_limits => 1);
+
 =head1 DESCRIPTION
 
 L<Mojo::Message::Request> is a container for HTTP requests, based on L<RFC 7230|https://tools.ietf.org/html/rfc7230>,
@@ -273,6 +334,18 @@ L<Mojo::Message::Request> inherits all events from L<Mojo::Message>.
 =head1 ATTRIBUTES
 
 L<Mojo::Message::Request> inherits all attributes from L<Mojo::Message> and implements the following new ones.
+
+=head2 adaptive_limits
+
+  my $bool = $req->adaptive_limits;
+  $req     = $req->adaptive_limits(1);
+
+Enable adaptive limits based on available system memory. When enabled, the C<max_message_size> will be automatically
+adjusted to use at most 10% of available system memory (if it can be detected). This is useful for environments where
+memory availability varies. Defaults to C<0> (disabled).
+
+  # Create request with adaptive limits
+  my $req = Mojo::Message::Request->new(adaptive_limits => 1);
 
 =head2 env
 
