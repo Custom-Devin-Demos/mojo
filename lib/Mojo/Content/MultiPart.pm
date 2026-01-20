@@ -101,7 +101,44 @@ sub is_multipart {1}
 sub new {
   my $self = shift->SUPER::new(@_);
   $self->on(read => \&_read);
+  $self->on(memory_threshold_exceeded => \&_cleanup_multipart_buffer);
   return $self;
+}
+
+sub _cleanup_multipart_buffer {
+  my $self = shift;
+
+  return $self unless defined $self->{multipart};
+
+  my $boundary = $self->boundary // '';
+  my $min_keep = length($boundary) + 8;
+  my $len      = length $self->{multipart};
+
+  if ($len > $min_keep && ($self->{multi_state} // '') eq 'multipart_body') {
+    my $pos = index $self->{multipart}, "\x0d\x0a--$boundary";
+    if ($pos < 0) {
+      my $safe_len = $len - $min_keep;
+      if ($safe_len > 0) {
+        my $chunk = substr $self->{multipart}, 0, $safe_len, '';
+        $self->parts->[-1] = $self->parts->[-1]->parse($chunk) if @{$self->parts};
+      }
+    }
+  }
+
+  return $self;
+}
+
+sub _memory_usage {
+  my $self = shift;
+
+  my $usage = $self->SUPER::_memory_usage;
+  $usage += length($self->{multipart} // '');
+
+  for my $part (@{$self->parts}) {
+    $usage += $part->_memory_usage if $part->can('_memory_usage');
+  }
+
+  return $usage;
 }
 
 sub _parse_multipart_body {

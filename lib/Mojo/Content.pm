@@ -8,9 +8,10 @@ use Mojo::SSE    qw(build_event parse_event);
 use Scalar::Util qw(looks_like_number);
 
 has [qw(auto_decompress auto_relax relaxed skip_body)];
-has headers           => sub { Mojo::Headers->new };
-has max_buffer_size   => sub { $ENV{MOJO_MAX_BUFFER_SIZE}   || 262144 };
-has max_leftover_size => sub { $ENV{MOJO_MAX_LEFTOVER_SIZE} || 262144 };
+has headers             => sub { Mojo::Headers->new };
+has max_buffer_size     => sub { $ENV{MOJO_MAX_BUFFER_SIZE}     || 262144 };
+has max_leftover_size   => sub { $ENV{MOJO_MAX_LEFTOVER_SIZE}   || 262144 };
+has max_memory_threshold => sub { $ENV{MOJO_MAX_MEMORY_THRESHOLD} || 2097152 };
 
 my $BOUNDARY_RE = qr!multipart.*boundary\s*=\s*(?:"([^"]+)"|([\w'(),.:?\-+/]+))!i;
 
@@ -74,6 +75,9 @@ sub parse {
   $self->_parse_until_body(@_);
   return $self if $self->{state} eq 'headers';
 
+  # Manage memory after header parsing
+  $self->_manage_memory_usage;
+
   # Chunked content
   $self->{real_size} //= 0;
   if ($self->is_chunked) {
@@ -111,6 +115,7 @@ sub parse {
     $self->_decompress($self->{buffer} //= '');
     $self->{size} += length $self->{buffer};
     $self->{buffer} = '';
+    $self->_manage_memory_usage;
     return $self;
   }
 
@@ -123,6 +128,9 @@ sub parse {
     $self->{size} += length $chunk;
   }
   $self->{state} = 'finished' if $len <= $self->progress;
+
+  # Cleanup decompression buffer when finished
+  $self->_cleanup_buffers('decompress') if $self->is_finished;
 
   return $self;
 }
@@ -172,6 +180,44 @@ sub write_sse {
 
   return $self->write unless defined $event;
   return $self->write(build_event($event), $cb);
+}
+
+sub _cleanup_buffers {
+  my ($self, $stage) = @_;
+
+  if ($stage eq 'headers') {
+    $self->{pre_buffer} = '' if defined $self->{pre_buffer} && $self->{state} ne 'headers';
+  }
+  elsif ($stage eq 'decompress') {
+    $self->{post_buffer} = '' if defined $self->{post_buffer} && $self->is_finished;
+  }
+
+  return $self;
+}
+
+sub _manage_memory_usage {
+  my $self = shift;
+
+  my $usage = $self->_memory_usage;
+  return $self if $usage <= $self->max_memory_threshold;
+
+  $self->emit('memory_threshold_exceeded', $usage);
+  $self->_cleanup_buffers('headers');
+  $self->_cleanup_buffers('decompress');
+
+  return $self;
+}
+
+sub _memory_usage {
+  my $self = shift;
+
+  my $usage = 0;
+  $usage += length($self->{pre_buffer}  // '');
+  $usage += length($self->{buffer}      // '');
+  $usage += length($self->{post_buffer} // '');
+  $usage += length($self->{body_buffer} // '');
+
+  return $usage;
 }
 
 sub _build_chunk {
@@ -349,6 +395,17 @@ Emitted when a new chunk of content arrives.
     say "Streaming: $bytes";
   });
 
+=head2 memory_threshold_exceeded
+
+  $content->on(memory_threshold_exceeded => sub ($content, $usage) {...});
+
+Emitted when memory usage exceeds L</"max_memory_threshold"> during parsing. The current memory usage in bytes is passed
+as the second argument. This event can be used to implement custom memory management strategies.
+
+  $content->on(memory_threshold_exceeded => sub ($content, $usage) {
+    say "Memory usage: $usage bytes";
+  });
+
 =head2 sse
 
   $content->on(sse => sub ($content, $event) {...});
@@ -401,6 +458,16 @@ variable or C<262144> (256KiB).
 
 Maximum size in bytes of buffer for pipelined HTTP requests, defaults to the value of the C<MOJO_MAX_LEFTOVER_SIZE>
 environment variable or C<262144> (256KiB).
+
+=head2 max_memory_threshold
+
+  my $size = $content->max_memory_threshold;
+  $content = $content->max_memory_threshold(4194304);
+
+Maximum memory threshold in bytes for content parsing buffers before triggering memory management actions such as
+switching to disk-based storage and cleaning up buffers. Defaults to the value of the C<MOJO_MAX_MEMORY_THRESHOLD>
+environment variable or C<2097152> (2MiB). When this threshold is exceeded, the C<memory_threshold_exceeded> event is
+emitted.
 
 =head2 relaxed
 

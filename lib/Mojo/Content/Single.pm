@@ -1,6 +1,7 @@
 package Mojo::Content::Single;
 use Mojo::Base 'Mojo::Content';
 
+use Mojo::Asset::File;
 use Mojo::Asset::Memory;
 use Mojo::Content::MultiPart;
 
@@ -30,6 +31,7 @@ sub get_body_chunk {
 sub new {
   my $self = shift->SUPER::new(@_);
   $self->{read} = $self->on(read => sub { $_[0]->asset($_[0]->asset->add_chunk($_[1])) });
+  $self->on(memory_threshold_exceeded => sub { shift->_switch_to_disk_asset });
   return $self;
 }
 
@@ -47,6 +49,30 @@ sub parse {
   my $multi = Mojo::Content::MultiPart->new(%$self);
   $self->emit(upgrade => $multi);
   return $multi->parse;
+}
+
+sub _memory_usage {
+  my $self = shift;
+
+  my $usage = $self->SUPER::_memory_usage;
+  my $asset = $self->asset;
+  $usage += $asset->size unless $asset->is_file;
+
+  return $usage;
+}
+
+sub _switch_to_disk_asset {
+  my $self = shift;
+
+  my $asset = $self->asset;
+  return $self if $asset->is_file;
+
+  my $file = Mojo::Asset::File->new;
+  $file->add_chunk($asset->slurp) if $asset->size;
+  $self->asset($file);
+  $self->emit('asset_upgraded');
+
+  return $self;
 }
 
 1;
@@ -73,6 +99,17 @@ L<RFC 7231|https://tools.ietf.org/html/rfc7231>.
 =head1 EVENTS
 
 L<Mojo::Content::Single> inherits all events from L<Mojo::Content> and can emit the following new ones.
+
+=head2 asset_upgraded
+
+  $single->on(asset_upgraded => sub ($single) {...});
+
+Emitted when the asset storage has been upgraded from in-memory to disk-based storage due to memory threshold being
+exceeded.
+
+  $single->on(asset_upgraded => sub ($single) {
+    say "Asset upgraded to file: " . $single->asset->path;
+  });
 
 =head2 upgrade
 
