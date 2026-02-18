@@ -64,7 +64,7 @@ sub BUILD_DYNAMIC {
 
   return sub {
     my $self    = shift;
-    my $dynamic = $dyn_methods->{$self->renderer}{$method};
+    my $dynamic = $dyn_methods->{$self->{renderer}}{$method};
     return $self->build_controller->$dynamic(@_) if $dynamic;
     my $package = ref $self;
     Carp::croak qq{Can't locate object method "$method" via package "$package"};
@@ -78,9 +78,11 @@ sub build_controller {
   my $stash = {};
   if ($tx && (my $sub = $tx->can('stash'))) { ($stash, $tx) = ($tx->$sub, $tx->tx) }
 
+  # Optimized defaults merging via direct hash access
+  my $defaults = $self->{defaults};
+  @$stash{keys %$defaults} = values %$defaults if $defaults && %$defaults;
+
   # Build default controller
-  my $defaults = $self->defaults;
-  @$stash{keys %$defaults} = values %$defaults;
   my $c = $self->controller_class->new(app => $self, stash => $stash, tx => $tx);
   $c->{tx} ||= $self->build_tx;
 
