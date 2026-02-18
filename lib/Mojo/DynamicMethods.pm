@@ -34,9 +34,13 @@ sub register {
   state $setup = do { fieldhash %dyn_methods; 1 };
 
   my $dyn_pkg = "${target}::_Dynamic";
+  my $existing = do { no strict 'refs'; *{"${dyn_pkg}::${name}"}{CODE} };
   monkey_patch($dyn_pkg, $name, $target->BUILD_DYNAMIC($name, \%dyn_methods))
-    unless do { no strict 'refs'; *{"${dyn_pkg}::${name}"}{CODE} };
+    unless $existing;
   $dyn_methods{$object}{$name} = $code;
+
+  # Invalidate method caches when registrations change
+  $dyn_methods{_cache_version}{$name} = ($dyn_methods{_cache_version}{$name} // 0) + 1;
 }
 
 "Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn";
