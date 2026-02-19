@@ -93,6 +93,13 @@ sub build_tx {
   my $tx  = Mojo::Transaction::HTTP->new;
   my $max = $self->max_request_size;
   $tx->req->max_message_size($max) if defined $max;
+
+  my $req = $tx->req;
+  $req->max_line_size(4096);
+  $req->content->max_buffer_size(131072);
+  $req->headers->max_line_size(4096);
+  $req->headers->max_lines(64);
+
   $self->plugins->emit_hook(after_build_tx => $tx, $self);
 
   return $tx;
