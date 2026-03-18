@@ -9,7 +9,7 @@ use Mojo::Loader qw(load_class);
 use Mojo::Util   qw(camelize);
 
 has base_classes               => sub { [qw(Mojolicious::Controller Mojolicious)] };
-has cache                      => sub { Mojo::Cache->new };
+has cache                      => sub { Mojo::Cache->new(max_keys => 500) };
 has [qw(conditions shortcuts)] => sub { {} };
 has types                      => sub { {num => qr/[0-9]+/} };
 has namespaces                 => sub { [] };
@@ -243,7 +243,7 @@ Base classes used to identify controllers, defaults to L<Mojolicious::Controller
   my $cache = $r->cache;
   $r        = $r->cache(Mojo::Cache->new);
 
-Routing cache, defaults to a L<Mojo::Cache> object.
+Routing cache, defaults to a L<Mojo::Cache> object with a maximum of C<500> keys.
 
 =head2 conditions
 
