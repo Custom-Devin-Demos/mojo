@@ -42,9 +42,13 @@ sub _match {
   local @{$self->{captures} //= {}}{keys %$captures} = values %$captures;
   $captures = $self->{captures};
 
-  # Method
+  # Method (also check original method for HEAD routes)
   my $methods = $r->methods;
-  return undef if $methods && !grep { $_ eq $options->{method} } @$methods;
+  if ($methods) {
+    my $m  = $options->{method};
+    my $om = $options->{original_method} // $m;
+    return undef unless grep { $_ eq $m || $_ eq $om } @$methods;
+  }
 
   # Conditions
   if (my $over = $r->requires) {

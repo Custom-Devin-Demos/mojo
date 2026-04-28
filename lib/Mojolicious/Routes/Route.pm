@@ -1,7 +1,7 @@
 package Mojolicious::Routes::Route;
 use Mojo::Base -base;
 
-use Carp qw(croak);
+use Carp qw(carp croak);
 use Mojo::DynamicMethods -dispatch;
 use Mojo::Util;
 use Mojolicious::Routes::Pattern;
@@ -43,6 +43,8 @@ sub delete { shift->_generate_route(DELETE => @_) }
 sub find { shift->_index->{shift()} }
 
 sub get { shift->_generate_route(GET => @_) }
+
+sub head { shift->_generate_route(HEAD => @_) }
 
 sub has_custom_name { !!shift->{custom} }
 
@@ -193,6 +195,8 @@ sub _generate_route {
     # Defaults
     elsif (ref $arg eq 'HASH') { %defaults = (%defaults, %$arg) }
   }
+
+  carp 'Odd number of condition arguments in route definition' if @conditions % 2;
 
   my $route = $self->_route($pattern, @constraints)->requires(\@conditions)->to(\%defaults);
   $methods eq 'under' ? $route->inline(1) : $route->methods($methods);
@@ -391,6 +395,23 @@ L<Mojolicious::Guides::Routing> for more information.
 
   # Route with destination
   $r->get('/user')->to('user#show');
+
+=head2 head
+
+  my $route = $r->head;
+  my $route = $r->head('/:foo');
+  my $route = $r->head('/:foo' => sub ($c) {...});
+  my $route = $r->head('/:foo' => sub ($c) {...} => 'name');
+  my $route = $r->head('/:foo' => {foo => 'bar'} => sub ($c) {...});
+  my $route = $r->head('/:foo' => [foo => qr/\w+/] => sub ($c) {...});
+  my $route = $r->head('/:foo' => (agent => qr/Firefox/) => sub ($c) {...});
+
+Generate L<Mojolicious::Routes::Route> object matching only C<HEAD> requests, takes the same arguments as L</"any">
+(except for the HTTP methods to match, which are implied). See L<Mojolicious::Guides::Tutorial> and
+L<Mojolicious::Guides::Routing> for more information.
+
+  # Route with destination
+  $r->head('/user')->to('user#peek');
 
 =head2 has_custom_name
 

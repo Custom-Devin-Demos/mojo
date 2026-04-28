@@ -438,6 +438,25 @@ get '/url_with/:foo' => sub {
   $c->render(text => $c->url_with({foo => 'bar'})->to_abs);
 };
 
+# HEAD route (only matches HEAD requests)
+head '/head_only' => sub {
+  my $c = shift;
+  $c->res->headers->header('X-Head-Test' => 'works');
+  $c->render(text => 'head response');
+};
+
+# Group exception safety
+eval {
+  group {
+    get '/in_dying_group' => sub { shift->render(text => 'should not be reachable') };
+    die 'group block died';
+  };
+};
+
+get '/after_dying_group' => sub {
+  shift->render(text => 'group restored');
+};
+
 my $dynamic_inline = 1;
 get '/dynamic/inline' => sub {
   my $c = shift;
@@ -1152,6 +1171,14 @@ is $t->app->timing->elapsed('does_not_exist'), undef,    'no timing data';
 is $t->app->timing->rps('0.1'),                '10.000', 'right number';
 is $t->app->timing->rps(1),                    '1.000',  'right number';
 is $t->app->timing->rps(0),                    undef,    'number too small';
+
+# HEAD route only matches HEAD requests
+my $head_tx = $t->ua->build_tx(HEAD => '/head_only');
+$t->request_ok($head_tx)->status_is(200)->header_is('X-Head-Test' => 'works')->content_is('');
+$t->get_ok('/head_only')->status_is(404);
+
+# Group exception safety (routes still work after a group block dies)
+$t->get_ok('/after_dying_group')->status_is(200)->content_is('group restored');
 
 done_testing();
 

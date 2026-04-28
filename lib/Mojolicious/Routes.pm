@@ -68,6 +68,7 @@ sub match {
   my $method   = uc $req->method;
   my $override = $req->url->query->clone->param('_method');
   $method = uc $override if $override && $method eq 'POST';
+  my $original_method = $method;
   $method = 'GET'        if $method eq 'HEAD';
 
   # Check cache
@@ -75,14 +76,14 @@ sub match {
   my $match = $c->match;
   $match->root($self);
   my $cache = $self->cache;
-  if (my $result = $cache->get("$method:$path:$ws")) {
+  if (my $result = $cache->get("$original_method:$path:$ws")) {
     return $match->endpoint($result->{endpoint})->stack($result->{stack});
   }
 
   # Check routes
-  $match->find($c => {method => $method, path => $path, websocket => $ws});
+  $match->find($c => {method => $method, original_method => $original_method, path => $path, websocket => $ws});
   return undef unless my $route = $match->endpoint;
-  $cache->set("$method:$path:$ws" => {endpoint => $route, stack => $match->stack});
+  $cache->set("$original_method:$path:$ws" => {endpoint => $route, stack => $match->stack});
 }
 
 sub _action { shift->plugins->emit_chain(around_action => @_) }
