@@ -27,22 +27,22 @@ sub import {
 
   # The ojo DSL
   monkey_patch $caller,
-    a => sub { $caller->can('any')->(@_) and return $ua->server->app },
-    b => \&b,
-    c => \&c,
-    d => sub { $ua->delete(@_)->result },
-    f => \&path,
-    g => sub { $ua->get(@_)->result },
-    h => sub { $ua->head(@_)->result },
-    j => \&j,
-    l => sub { Mojo::URL->new(@_) },
-    n => sub (&@) { say STDERR timestr timeit($_[1] // 1, $_[0]) },
-    o => sub { $ua->options(@_)->result },
-    p => sub { $ua->post(@_)->result },
-    r => \&dumper,
-    t => sub { $ua->patch(@_)->result },
-    u => sub { $ua->put(@_)->result },
-    x => sub { Mojo::DOM->new(@_) };
+    a => sub { $caller->can('any')->(@_) and return $ua->server->app },  # any
+    b => \&b,                                                             # bytestream
+    c => \&c,                                                             # collection
+    d => sub { $ua->delete(@_)->result },                                 # delete
+    f => \&path,                                                          # file
+    g => sub { $ua->get(@_)->result },                                    # get
+    h => sub { $ua->head(@_)->result },                                   # head
+    j => \&j,                                                             # json
+    l => sub { Mojo::URL->new(@_) },                                     # link (URL)
+    n => sub (&@) { say STDERR timestr timeit($_[1] // 1, $_[0]) },      # benchmark (n iterations)
+    o => sub { $ua->options(@_)->result },                                # options
+    p => sub { $ua->post(@_)->result },                                   # post
+    r => \&dumper,                                                        # repr/dump
+    t => sub { $ua->patch(@_)->result },                                  # paTch
+    u => sub { $ua->put(@_)->result },                                    # pUt
+    x => sub { Mojo::DOM->new(@_) };                                     # XML/DOM
 }
 
 1;

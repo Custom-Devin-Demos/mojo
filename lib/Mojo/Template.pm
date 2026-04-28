@@ -153,6 +153,7 @@ sub process {
   # Use a real stack trace for normal exceptions
   local $SIG{__DIE__} = sub {
     CORE::die $_[0] if ref $_[0];
+    CORE::die $_[0] if defined $^S && !$^S;
     CORE::die Mojo::Exception->new(shift)->trace->inspect($self->unparsed, $self->code)->verbose(1);
   };
 
